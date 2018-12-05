@@ -15,7 +15,6 @@
  */
 package io.netty.handler.codec.stomp;
 
-import java.util.List;
 import java.util.Locale;
 
 import io.netty.buffer.ByteBuf;
@@ -106,7 +105,7 @@ public class StompSubframeDecoder extends ReplayingDecoder<State> {
     }
 
     @Override
-    protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
+    protected void decode(ChannelHandlerContext ctx, ByteBuf in) throws Exception {
         switch (state()) {
             case SKIP_CONTROL_CHARACTERS:
                 skipControlCharacters(in);
@@ -119,13 +118,13 @@ public class StompSubframeDecoder extends ReplayingDecoder<State> {
                     command = readCommand(in);
                     frame = new DefaultStompHeadersSubframe(command);
                     checkpoint(readHeaders(in, frame.headers()));
-                    out.add(frame);
+                    ctx.fireChannelRead(frame);
                 } catch (Exception e) {
                     if (frame == null) {
                         frame = new DefaultStompHeadersSubframe(command);
                     }
                     frame.setDecoderResult(DecoderResult.failure(e));
-                    out.add(frame);
+                    ctx.fireChannelRead(frame);
                     checkpoint(State.BAD_FRAME);
                     return;
                 }
@@ -154,7 +153,7 @@ public class StompSubframeDecoder extends ReplayingDecoder<State> {
                             lastContent = new DefaultLastStompContentSubframe(chunkBuffer);
                             checkpoint(State.FINALIZE_FRAME_READ);
                         } else {
-                            out.add(new DefaultStompContentSubframe(chunkBuffer));
+                            ctx.fireChannelRead(new DefaultStompContentSubframe(chunkBuffer));
                             return;
                         }
                     } else {
@@ -173,7 +172,7 @@ public class StompSubframeDecoder extends ReplayingDecoder<State> {
                                 lastContent = new DefaultLastStompContentSubframe(chunkBuffer);
                                 checkpoint(State.FINALIZE_FRAME_READ);
                             } else {
-                                out.add(new DefaultStompContentSubframe(chunkBuffer));
+                                ctx.fireChannelRead(new DefaultStompContentSubframe(chunkBuffer));
                                 return;
                             }
                         }
@@ -184,13 +183,13 @@ public class StompSubframeDecoder extends ReplayingDecoder<State> {
                     if (lastContent == null) {
                         lastContent = LastStompContentSubframe.EMPTY_LAST_CONTENT;
                     }
-                    out.add(lastContent);
+                    ctx.fireChannelRead(lastContent);
                     resetDecoder();
             }
         } catch (Exception e) {
             StompContentSubframe errorContent = new DefaultLastStompContentSubframe(Unpooled.EMPTY_BUFFER);
             errorContent.setDecoderResult(DecoderResult.failure(e));
-            out.add(errorContent);
+            ctx.fireChannelRead(errorContent);
             checkpoint(State.BAD_FRAME);
         }
     }

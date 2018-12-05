@@ -20,8 +20,6 @@ import com.jcraft.jzlib.JZlib;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 
-import java.util.List;
-
 public class JZlibDecoder extends ZlibDecoder {
 
     private final Inflater z = new Inflater();
@@ -83,7 +81,7 @@ public class JZlibDecoder extends ZlibDecoder {
     }
 
     @Override
-    protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
+    protected void decode(ChannelHandlerContext ctx, ByteBuf in) throws Exception {
         if (finished) {
             // Skip data received after finished.
             in.skipBytes(in.readableBytes());
@@ -156,7 +154,7 @@ public class JZlibDecoder extends ZlibDecoder {
             } finally {
                 in.skipBytes(z.next_in_index - oldNextInIndex);
                 if (decompressed.isReadable()) {
-                    out.add(decompressed);
+                    ctx.fireChannelRead(decompressed);
                 } else {
                     decompressed.release();
                 }

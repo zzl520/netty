@@ -21,8 +21,6 @@ import io.netty.handler.codec.ByteToMessageDecoder;
 import io.netty.handler.codec.CorruptedFrameException;
 import io.netty.handler.codec.TooLongFrameException;
 
-import java.util.List;
-
 /**
  * A frame decoder for single separate XML based message streams.
  * <p/>
@@ -79,7 +77,7 @@ public class XmlFrameDecoder extends ByteToMessageDecoder {
     }
 
     @Override
-    protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
+    protected void decode(ChannelHandlerContext ctx, ByteBuf in) throws Exception {
         boolean openingBracketFound = false;
         boolean atLeastOneXmlElementFound = false;
         boolean inCDATASection = false;
@@ -183,7 +181,7 @@ public class XmlFrameDecoder extends ByteToMessageDecoder {
             final ByteBuf frame =
                     extractFrame(in, readerIndex + leadingWhiteSpaceCount, xmlElementLength - leadingWhiteSpaceCount);
             in.skipBytes(xmlElementLength);
-            out.add(frame);
+            ctx.fireChannelRead(frame);
         }
     }
 

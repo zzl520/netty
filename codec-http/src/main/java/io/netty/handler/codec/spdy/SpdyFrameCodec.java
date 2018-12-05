@@ -26,7 +26,6 @@ import io.netty.handler.codec.ByteToMessageDecoder;
 import io.netty.handler.codec.UnsupportedMessageTypeException;
 
 import java.net.SocketAddress;
-import java.util.List;
 
 /**
  * A {@link ChannelHandler} that encodes and decodes SPDY Frames.
@@ -106,8 +105,7 @@ public class SpdyFrameCodec extends ByteToMessageDecoder
     }
 
     @Override
-    public void handlerAdded(ChannelHandlerContext ctx) throws Exception {
-        super.handlerAdded(ctx);
+    public void handlerAdded0(ChannelHandlerContext ctx) throws Exception {
         this.ctx = ctx;
         ctx.channel().closeFuture().addListener(new ChannelFutureListener() {
             @Override
@@ -119,7 +117,7 @@ public class SpdyFrameCodec extends ByteToMessageDecoder
     }
 
     @Override
-    protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
+    protected void decode(ChannelHandlerContext ctx, ByteBuf in) throws Exception {
         spdyFrameDecoder.decode(in);
     }
 

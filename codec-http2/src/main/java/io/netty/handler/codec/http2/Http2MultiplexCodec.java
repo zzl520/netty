@@ -205,6 +205,7 @@ public class Http2MultiplexCodec extends Http2FrameCodec {
             throw new IllegalStateException("EventExecutor must be EventLoop of Channel");
         }
         this.ctx = ctx;
+        super.handlerAdded0(ctx);
     }
 
     @Override

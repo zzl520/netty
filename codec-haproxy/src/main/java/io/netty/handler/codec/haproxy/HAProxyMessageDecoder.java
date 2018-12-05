@@ -22,8 +22,6 @@ import io.netty.handler.codec.LineBasedFrameDecoder;
 import io.netty.handler.codec.ProtocolDetectionResult;
 import io.netty.util.CharsetUtil;
 
-import java.util.List;
-
 /**
  * Decodes an HAProxy proxy protocol header
  *
@@ -227,7 +225,7 @@ public class HAProxyMessageDecoder extends ByteToMessageDecoder {
     }
 
     @Override
-    protected final void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
+    protected final void decode(ChannelHandlerContext ctx, ByteBuf in) throws Exception {
         // determine the specification version
         if (version == -1) {
             if ((version = findVersion(in)) == -1) {
@@ -247,9 +245,9 @@ public class HAProxyMessageDecoder extends ByteToMessageDecoder {
             finished = true;
             try {
                 if (version == 1) {
-                    out.add(HAProxyMessage.decodeHeader(decoded.toString(CharsetUtil.US_ASCII)));
+                    ctx.fireChannelRead(HAProxyMessage.decodeHeader(decoded.toString(CharsetUtil.US_ASCII)));
                 } else {
-                    out.add(HAProxyMessage.decodeHeader(decoded));
+                    ctx.fireChannelRead(HAProxyMessage.decodeHeader(decoded));
                 }
             } catch (HAProxyProtocolException e) {
                 fail(ctx, null, e);

@@ -30,7 +30,6 @@ import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 
 import java.net.SocketAddress;
-import java.util.List;
 import java.util.Locale;
 
 /**
@@ -53,7 +52,7 @@ public abstract class AbstractSniHandler<T> extends ByteToMessageDecoder impleme
     private boolean readPending;
 
     @Override
-    protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
+    protected void decode(ChannelHandlerContext ctx, ByteBuf in) throws Exception {
         if (!suppressRead && !handshakeFailed) {
             final int writerIndex = in.writerIndex();
             try {

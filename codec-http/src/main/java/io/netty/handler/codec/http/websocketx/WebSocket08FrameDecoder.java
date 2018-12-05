@@ -64,7 +64,6 @@ import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 
 import java.nio.ByteOrder;
-import java.util.List;
 
 import static io.netty.buffer.ByteBufUtil.readBytes;
 
@@ -149,7 +148,7 @@ public class WebSocket08FrameDecoder extends ByteToMessageDecoder
     }
 
     @Override
-    protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
+    protected void decode(ChannelHandlerContext ctx, ByteBuf in) throws Exception {
 
         // Discard all data received if closing handshake was received before.
         if (receivedClosingHandshake) {
@@ -315,19 +314,19 @@ public class WebSocket08FrameDecoder extends ByteToMessageDecoder
                         // Processing ping/pong/close frames because they cannot be
                         // fragmented
                         if (frameOpcode == OPCODE_PING) {
-                            out.add(new PingWebSocketFrame(frameFinalFlag, frameRsv, payloadBuffer));
+                            ctx.fireChannelRead(new PingWebSocketFrame(frameFinalFlag, frameRsv, payloadBuffer));
                             payloadBuffer = null;
                             return;
                         }
                         if (frameOpcode == OPCODE_PONG) {
-                            out.add(new PongWebSocketFrame(frameFinalFlag, frameRsv, payloadBuffer));
+                            ctx.fireChannelRead(new PongWebSocketFrame(frameFinalFlag, frameRsv, payloadBuffer));
                             payloadBuffer = null;
                             return;
                         }
                         if (frameOpcode == OPCODE_CLOSE) {
                             receivedClosingHandshake = true;
                             checkCloseFrameBody(ctx, payloadBuffer);
-                            out.add(new CloseWebSocketFrame(frameFinalFlag, frameRsv, payloadBuffer));
+                            ctx.fireChannelRead(new CloseWebSocketFrame(frameFinalFlag, frameRsv, payloadBuffer));
                             payloadBuffer = null;
                             return;
                         }
@@ -347,15 +346,15 @@ public class WebSocket08FrameDecoder extends ByteToMessageDecoder
 
                         // Return the frame
                         if (frameOpcode == OPCODE_TEXT) {
-                            out.add(new TextWebSocketFrame(frameFinalFlag, frameRsv, payloadBuffer));
+                            ctx.fireChannelRead(new TextWebSocketFrame(frameFinalFlag, frameRsv, payloadBuffer));
                             payloadBuffer = null;
                             return;
                         } else if (frameOpcode == OPCODE_BINARY) {
-                            out.add(new BinaryWebSocketFrame(frameFinalFlag, frameRsv, payloadBuffer));
+                            ctx.fireChannelRead(new BinaryWebSocketFrame(frameFinalFlag, frameRsv, payloadBuffer));
                             payloadBuffer = null;
                             return;
                         } else if (frameOpcode == OPCODE_CONT) {
-                            out.add(new ContinuationWebSocketFrame(frameFinalFlag, frameRsv,
+                            ctx.fireChannelRead(new ContinuationWebSocketFrame(frameFinalFlag, frameRsv,
                                     payloadBuffer));
                             payloadBuffer = null;
                             return;

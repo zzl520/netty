@@ -29,7 +29,6 @@ import io.netty.util.concurrent.GenericFutureListener;
 import io.netty.util.concurrent.ImmediateEventExecutor;
 import junit.framework.AssertionFailedError;
 
-import java.util.List;
 import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 
@@ -182,7 +181,7 @@ public final class Http2TestUtil {
         }
 
         @Override
-        protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
+        protected void decode(ChannelHandlerContext ctx, ByteBuf in) throws Exception {
             reader.readFrame(ctx, in, new Http2FrameListener() {
                 @Override
                 public int onDataRead(ChannelHandlerContext ctx, int streamId, ByteBuf data, int padding,

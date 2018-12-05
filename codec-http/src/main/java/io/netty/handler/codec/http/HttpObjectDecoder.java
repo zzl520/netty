@@ -192,7 +192,7 @@ public abstract class HttpObjectDecoder extends ByteToMessageDecoder {
     }
 
     @Override
-    protected void decode(ChannelHandlerContext ctx, ByteBuf buffer, List<Object> out) throws Exception {
+    protected void decode(ChannelHandlerContext ctx, ByteBuf buffer) throws Exception {
         if (resetRequested) {
             resetNow();
         }
@@ -220,7 +220,7 @@ public abstract class HttpObjectDecoder extends ByteToMessageDecoder {
             currentState = State.READ_HEADER;
             // fall-through
         } catch (Exception e) {
-            out.add(invalidMessage(buffer, e));
+            ctx.fireChannelRead(invalidMessage(buffer, e));
             return;
         }
         case READ_HEADER: try {
@@ -233,8 +233,8 @@ public abstract class HttpObjectDecoder extends ByteToMessageDecoder {
             case SKIP_CONTROL_CHARS:
                 // fast-path
                 // No content is expected.
-                out.add(message);
-                out.add(LastHttpContent.EMPTY_LAST_CONTENT);
+                ctx.fireChannelRead(message);
+                ctx.fireChannelRead(LastHttpContent.EMPTY_LAST_CONTENT);
                 resetNow();
                 return;
             case READ_CHUNK_SIZE:
@@ -242,7 +242,7 @@ public abstract class HttpObjectDecoder extends ByteToMessageDecoder {
                     throw new IllegalArgumentException("Chunked messages not supported");
                 }
                 // Chunked encoding - generate HttpMessage first.  HttpChunks will follow.
-                out.add(message);
+                ctx.fireChannelRead(message);
                 return;
             default:
                 /**
@@ -253,8 +253,8 @@ public abstract class HttpObjectDecoder extends ByteToMessageDecoder {
                  */
                 long contentLength = contentLength();
                 if (contentLength == 0 || contentLength == -1 && isDecodingRequest()) {
-                    out.add(message);
-                    out.add(LastHttpContent.EMPTY_LAST_CONTENT);
+                    ctx.fireChannelRead(message);
+                    ctx.fireChannelRead(LastHttpContent.EMPTY_LAST_CONTENT);
                     resetNow();
                     return;
                 }
@@ -262,7 +262,7 @@ public abstract class HttpObjectDecoder extends ByteToMessageDecoder {
                 assert nextState == State.READ_FIXED_LENGTH_CONTENT ||
                         nextState == State.READ_VARIABLE_LENGTH_CONTENT;
 
-                out.add(message);
+                ctx.fireChannelRead(message);
 
                 if (nextState == State.READ_FIXED_LENGTH_CONTENT) {
                     // chunkSize will be decreased as the READ_FIXED_LENGTH_CONTENT state reads data chunk by chunk.
@@ -273,7 +273,7 @@ public abstract class HttpObjectDecoder extends ByteToMessageDecoder {
                 return;
             }
         } catch (Exception e) {
-            out.add(invalidMessage(buffer, e));
+            ctx.fireChannelRead(invalidMessage(buffer, e));
             return;
         }
         case READ_VARIABLE_LENGTH_CONTENT: {
@@ -281,7 +281,7 @@ public abstract class HttpObjectDecoder extends ByteToMessageDecoder {
             int toRead = Math.min(buffer.readableBytes(), maxChunkSize);
             if (toRead > 0) {
                 ByteBuf content = buffer.readRetainedSlice(toRead);
-                out.add(new DefaultHttpContent(content));
+                ctx.fireChannelRead(new DefaultHttpContent(content));
             }
             return;
         }
@@ -307,10 +307,10 @@ public abstract class HttpObjectDecoder extends ByteToMessageDecoder {
 
             if (chunkSize == 0) {
                 // Read all content.
-                out.add(new DefaultLastHttpContent(content, validateHeaders));
+                ctx.fireChannelRead(new DefaultLastHttpContent(content, validateHeaders));
                 resetNow();
             } else {
-                out.add(new DefaultHttpContent(content));
+                ctx.fireChannelRead(new DefaultHttpContent(content));
             }
             return;
         }
@@ -332,7 +332,7 @@ public abstract class HttpObjectDecoder extends ByteToMessageDecoder {
             currentState = State.READ_CHUNKED_CONTENT;
             // fall-through
         } catch (Exception e) {
-            out.add(invalidChunk(buffer, e));
+            ctx.fireChannelRead(invalidChunk(buffer, e));
             return;
         }
         case READ_CHUNKED_CONTENT: {
@@ -345,7 +345,7 @@ public abstract class HttpObjectDecoder extends ByteToMessageDecoder {
             HttpContent chunk = new DefaultHttpContent(buffer.readRetainedSlice(toRead));
             chunkSize -= toRead;
 
-            out.add(chunk);
+            ctx.fireChannelRead(chunk);
 
             if (chunkSize != 0) {
                 return;
@@ -371,11 +371,11 @@ public abstract class HttpObjectDecoder extends ByteToMessageDecoder {
             if (trailer == null) {
                 return;
             }
-            out.add(trailer);
+            ctx.fireChannelRead(trailer);
             resetNow();
             return;
         } catch (Exception e) {
-            out.add(invalidChunk(buffer, e));
+            ctx.fireChannelRead(invalidChunk(buffer, e));
             return;
         }
         case BAD_MESSAGE: {
@@ -390,7 +390,7 @@ public abstract class HttpObjectDecoder extends ByteToMessageDecoder {
                 // other handler will replace this codec with the upgraded protocol codec to
                 // take the traffic over at some point then.
                 // See https://github.com/netty/netty/issues/2173
-                out.add(buffer.readBytes(readableBytes));
+                ctx.fireChannelRead(buffer.readBytes(readableBytes));
             }
             break;
         }
@@ -398,8 +398,8 @@ public abstract class HttpObjectDecoder extends ByteToMessageDecoder {
     }
 
     @Override
-    protected void decodeLast(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
-        super.decodeLast(ctx, in, out);
+    protected void decodeLast(ChannelHandlerContext ctx, ByteBuf in) throws Exception {
+        super.decodeLast(ctx, in);
 
         if (resetRequested) {
             // If a reset was requested by decodeLast() we need to do it now otherwise we may produce a
@@ -411,7 +411,7 @@ public abstract class HttpObjectDecoder extends ByteToMessageDecoder {
             boolean chunked = HttpUtil.isTransferEncodingChunked(message);
             if (currentState == State.READ_VARIABLE_LENGTH_CONTENT && !in.isReadable() && !chunked) {
                 // End of connection.
-                out.add(LastHttpContent.EMPTY_LAST_CONTENT);
+                ctx.fireChannelRead(LastHttpContent.EMPTY_LAST_CONTENT);
                 resetNow();
                 return;
             }
@@ -419,7 +419,7 @@ public abstract class HttpObjectDecoder extends ByteToMessageDecoder {
             if (currentState == State.READ_HEADER) {
                 // If we are still in the state of reading headers we need to create a new invalid message that
                 // signals that the connection was closed before we received the headers.
-                out.add(invalidMessage(Unpooled.EMPTY_BUFFER,
+                ctx.fireChannelRead(invalidMessage(Unpooled.EMPTY_BUFFER,
                         new PrematureChannelClosureException("Connection closed before received headers")));
                 resetNow();
                 return;
@@ -438,7 +438,7 @@ public abstract class HttpObjectDecoder extends ByteToMessageDecoder {
             }
 
             if (!prematureClosure) {
-                out.add(LastHttpContent.EMPTY_LAST_CONTENT);
+                ctx.fireChannelRead(LastHttpContent.EMPTY_LAST_CONTENT);
             }
             resetNow();
         }

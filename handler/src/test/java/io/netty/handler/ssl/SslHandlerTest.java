@@ -98,11 +98,11 @@ public class SslHandlerTest {
             }
         }, new SslHandler(engine) {
             @Override
-            public void handlerAdded(ChannelHandlerContext ctx) throws Exception {
+            public void handlerAdded0(ChannelHandlerContext ctx) throws Exception {
                 // We want to override what Channel.isActive() will return as otherwise it will
                 // return true and so trigger an handshake.
                 inActive.set(true);
-                super.handlerAdded(ctx);
+                super.handlerAdded0(ctx);
                 inActive.set(false);
             }
         }, new ChannelInboundHandlerAdapter() {

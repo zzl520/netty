@@ -1242,7 +1242,7 @@ public class SslHandler extends ByteToMessageDecoder implements ChannelOutboundH
     }
 
     @Override
-    protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws SSLException {
+    protected void decode(ChannelHandlerContext ctx, ByteBuf in) throws SSLException {
         if (jdkCompatibilityMode) {
             decodeJdkCompatible(ctx, in);
         } else {
@@ -1656,7 +1656,7 @@ public class SslHandler extends ByteToMessageDecoder implements ChannelOutboundH
     }
 
     @Override
-    public void handlerAdded(final ChannelHandlerContext ctx) throws Exception {
+    public void handlerAdded0(final ChannelHandlerContext ctx) throws Exception {
         this.ctx = ctx;
 
         pendingUnencryptedWrites = new SslHandlerCoalescingBufferQueue(ctx.channel(), 16);

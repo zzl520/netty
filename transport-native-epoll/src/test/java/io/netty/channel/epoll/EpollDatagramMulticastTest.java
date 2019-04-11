@@ -27,8 +27,4 @@ public class EpollDatagramMulticastTest extends DatagramMulticastTest {
     protected List<TestsuitePermutation.BootstrapComboFactory<Bootstrap, Bootstrap>> newFactories() {
         return EpollSocketTestPermutation.INSTANCE.datagram(InternetProtocolFamily.IPv4);
     }
-
-    public void testMulticast(Bootstrap sb, Bootstrap cb) throws Throwable {
-        super.testMulticast(sb, cb);
-    }
 }

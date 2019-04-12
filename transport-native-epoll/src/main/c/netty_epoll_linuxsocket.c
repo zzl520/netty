@@ -68,11 +68,11 @@ static void netty_epoll_linuxsocket_setTimeToLive(JNIEnv* env, jclass clazz, jin
     netty_unix_socket_setOption(env, fd, IPPROTO_IP, IP_TTL, &optval, sizeof(optval));
 }
 
-static void netty_epoll_linuxsocket_setInterface(JNIEnv* env, jclass clazz, jint fd, jbyteArray interfaceAddress, jint scopeId) {
+static void netty_epoll_linuxsocket_setInterface(JNIEnv* env, jclass clazz, jint fd, jbyteArray interfaceAddress, jint scopeId, jint interfaceIndex) {
     struct sockaddr_storage interfaceAddr;
     socklen_t interfaceAddrSize;
+
     struct sockaddr_in* interfaceIpAddr;
-    struct sockaddr_in6* interfaceIp6Addr;
 
     if (netty_unix_socket_initSockaddr(env, interfaceAddress, scopeId, 0, &interfaceAddr, &interfaceAddrSize) == -1) {
         netty_unix_errors_throwIOException(env, "Could not init sockaddr");
@@ -85,8 +85,7 @@ static void netty_epoll_linuxsocket_setInterface(JNIEnv* env, jclass clazz, jint
         netty_unix_socket_setOption(env, fd, IPPROTO_IP, IP_MULTICAST_IF, &interfaceIpAddr->sin_addr, sizeof(interfaceIpAddr->sin_addr));
         break;
     case AF_INET6:
-        interfaceIp6Addr = (struct sockaddr_in6*) &interfaceAddr;
-        netty_unix_socket_setOption(env, fd, IPPROTO_IPV6, IPV6_MULTICAST_IF, &interfaceIp6Addr->sin6_addr, sizeof(interfaceIp6Addr->sin6_addr));
+        netty_unix_socket_setOption(env, fd, IPPROTO_IPV6, IPV6_MULTICAST_IF, &interfaceIndex, sizeof(interfaceIndex));
         break;
     }
 }
@@ -147,7 +146,7 @@ static void netty_epoll_linuxsocket_setSoBusyPoll(JNIEnv* env, jclass clazz, jin
     netty_unix_socket_setOption(env, fd, SOL_SOCKET, SO_BUSY_POLL, &optval, sizeof(optval));
 }
 
-static void netty_epoll_linuxsocket_joinGroup(JNIEnv* env, jclass clazz, jint fd, jbyteArray groupAddress, jbyteArray interfaceAddress, jint scopeId) {
+static void netty_epoll_linuxsocket_joinGroup(JNIEnv* env, jclass clazz, jint fd, jbyteArray groupAddress, jbyteArray interfaceAddress, jint scopeId, jint interfaceIndex) {
     struct sockaddr_storage groupAddr;
     socklen_t groupAddrSize;
     struct sockaddr_storage interfaceAddr;
@@ -155,6 +154,10 @@ static void netty_epoll_linuxsocket_joinGroup(JNIEnv* env, jclass clazz, jint fd
     struct sockaddr_in* groupIpAddr;
     struct sockaddr_in* interfaceIpAddr;
     struct ip_mreq mreq;
+
+    struct sockaddr_in6* groupIp6Addr;
+    struct sockaddr_in6* interfaceIp6Addr;
+    struct ipv6_mreq mreq6;
 
     if (netty_unix_socket_initSockaddr(env, groupAddress, scopeId, 0, &groupAddr, &groupAddrSize) == -1) {
         netty_unix_errors_throwIOException(env, "Could not init sockaddr");
@@ -175,7 +178,11 @@ static void netty_epoll_linuxsocket_joinGroup(JNIEnv* env, jclass clazz, jint fd
         netty_unix_socket_setOption(env, fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq));
         break;
     case AF_INET6:
-        netty_unix_errors_throwIOException(env, "AF_INET6 not supported");
+        groupIp6Addr = (struct sockaddr_in6*) &groupAddr;
+        interfaceIp6Addr = (struct sockaddr_in6*) &interfaceAddr;
+        memcpy(&mreq6.ipv6mr_multiaddr, &groupIp6Addr->sin6_addr, sizeof(groupIp6Addr->sin6_addr));
+        memcpy(&mreq6.ipv6mr_interface, &interfaceIp6Addr->sin6_addr, sizeof(interfaceIp6Addr->sin6_addr));
+        netty_unix_socket_setOption(env, fd, IPPROTO_IPV6, IPV6_JOIN_GROUP, &mreq6, sizeof(mreq6));
         break;
     default:
         netty_unix_errors_throwIOException(env, "Address family not supported");
@@ -183,7 +190,7 @@ static void netty_epoll_linuxsocket_joinGroup(JNIEnv* env, jclass clazz, jint fd
     }
 }
 
-static void netty_epoll_linuxsocket_joinSsmGroup(JNIEnv* env, jclass clazz, jint fd, jbyteArray groupAddress, jbyteArray interfaceAddress, jint scopeId, jbyteArray sourceAddress) {
+static void netty_epoll_linuxsocket_joinSsmGroup(JNIEnv* env, jclass clazz, jint fd, jbyteArray groupAddress, jbyteArray interfaceAddress, jint scopeId, jint interfaceIndex, jbyteArray sourceAddress) {
     struct sockaddr_storage groupAddr;
     socklen_t groupAddrSize;
     struct sockaddr_storage interfaceAddr;
@@ -195,6 +202,7 @@ static void netty_epoll_linuxsocket_joinSsmGroup(JNIEnv* env, jclass clazz, jint
     struct sockaddr_in* sourceIpAddr;
     struct ip_mreq_source mreq;
 
+    struct group_source_req mreq6;
 
     if (netty_unix_socket_initSockaddr(env, groupAddress, scopeId, 0, &groupAddr, &groupAddrSize) == -1) {
         netty_unix_errors_throwIOException(env, "Could not init sockaddr");
@@ -222,7 +230,14 @@ static void netty_epoll_linuxsocket_joinSsmGroup(JNIEnv* env, jclass clazz, jint
         netty_unix_socket_setOption(env, fd, IPPROTO_IP, IP_ADD_SOURCE_MEMBERSHIP, &mreq, sizeof(mreq));
         break;
     case AF_INET6:
-        netty_unix_errors_throwIOException(env, "AF_INET6 not supported");
+        if (interfaceIndex == -1) {
+            netty_unix_errors_throwIOException(env, "Unable to find network index");
+            break;
+        }
+        mreq6.gsr_group = groupAddr;
+        mreq6.gsr_interface = interfaceIndex;
+        mreq6.gsr_source = sourceAddr;
+        netty_unix_socket_setOption(env, fd, IPPROTO_IPV6, MCAST_JOIN_SOURCE_GROUP, &mreq6, sizeof(mreq6));
         break;
     default:
         netty_unix_errors_throwIOException(env, "Address family not supported");
@@ -230,7 +245,7 @@ static void netty_epoll_linuxsocket_joinSsmGroup(JNIEnv* env, jclass clazz, jint
     }
 }
 
-static void netty_epoll_linuxsocket_leaveGroup(JNIEnv* env, jclass clazz, jint fd, jbyteArray groupAddress, jbyteArray interfaceAddress, jint scopeId) {
+static void netty_epoll_linuxsocket_leaveGroup(JNIEnv* env, jclass clazz, jint fd, jbyteArray groupAddress, jbyteArray interfaceAddress, jint scopeId, jint interfaceIndex) {
     struct sockaddr_storage groupAddr;
     socklen_t groupAddrSize;
 
@@ -239,6 +254,11 @@ static void netty_epoll_linuxsocket_leaveGroup(JNIEnv* env, jclass clazz, jint f
     struct sockaddr_in* groupIpAddr;
     struct sockaddr_in* interfaceIpAddr;
     struct ip_mreq mreq;
+
+    struct sockaddr_in6* groupIp6Addr;
+    struct sockaddr_in6* interfaceIp6Addr;
+    struct ipv6_mreq mreq6;
+
 
     if (netty_unix_socket_initSockaddr(env, groupAddress, scopeId, 0, &groupAddr, &groupAddrSize) == -1) {
         netty_unix_errors_throwIOException(env, "Could not init sockaddr");
@@ -259,7 +279,11 @@ static void netty_epoll_linuxsocket_leaveGroup(JNIEnv* env, jclass clazz, jint f
         netty_unix_socket_setOption(env, fd, IPPROTO_IP, IP_DROP_MEMBERSHIP, &mreq, sizeof(mreq));
         break;
     case AF_INET6:
-        netty_unix_errors_throwIOException(env, "AF_INET6 not supported");
+        groupIp6Addr = (struct sockaddr_in6*) &groupAddr;
+        interfaceIp6Addr = (struct sockaddr_in6*) &interfaceAddr;
+        memcpy(&mreq6.ipv6mr_multiaddr, &groupIp6Addr->sin6_addr, sizeof(groupIp6Addr->sin6_addr));
+        memcpy(&mreq6.ipv6mr_interface, &interfaceIp6Addr->sin6_addr, sizeof(interfaceIp6Addr->sin6_addr));
+        netty_unix_socket_setOption(env, fd, IPPROTO_IPV6, IPV6_LEAVE_GROUP, &mreq6, sizeof(mreq6));
         break;
     default:
         netty_unix_errors_throwIOException(env, "Address family not supported");
@@ -267,7 +291,7 @@ static void netty_epoll_linuxsocket_leaveGroup(JNIEnv* env, jclass clazz, jint f
     }
 }
 
-static void netty_epoll_linuxsocket_leaveSsmGroup(JNIEnv* env, jclass clazz, jint fd, jbyteArray groupAddress, jbyteArray interfaceAddress, jint scopeId, jbyteArray sourceAddress) {
+static void netty_epoll_linuxsocket_leaveSsmGroup(JNIEnv* env, jclass clazz, jint fd, jbyteArray groupAddress, jbyteArray interfaceAddress, jint scopeId, jint interfaceIndex, jbyteArray sourceAddress) {
     struct sockaddr_storage groupAddr;
     socklen_t groupAddrSize;
     struct sockaddr_storage interfaceAddr;
@@ -279,6 +303,7 @@ static void netty_epoll_linuxsocket_leaveSsmGroup(JNIEnv* env, jclass clazz, jin
     struct sockaddr_in* sourceIpAddr;
 
     struct ip_mreq_source mreq;
+    struct group_source_req mreq6;
 
 
     if (netty_unix_socket_initSockaddr(env, groupAddress, scopeId, 0, &groupAddr, &groupAddrSize) == -1) {
@@ -307,7 +332,15 @@ static void netty_epoll_linuxsocket_leaveSsmGroup(JNIEnv* env, jclass clazz, jin
         netty_unix_socket_setOption(env, fd, IPPROTO_IP, IP_DROP_SOURCE_MEMBERSHIP, &mreq, sizeof(mreq));
         break;
     case AF_INET6:
-        netty_unix_errors_throwIOException(env, "AF_INET6 not supported");
+        if (interfaceIndex == -1) {
+            netty_unix_errors_throwIOException(env, "Unable to find network index");
+            break;
+        }
+
+        mreq6.gsr_group = groupAddr;
+        mreq6.gsr_interface = interfaceIndex;
+        mreq6.gsr_source = sourceAddr;
+        netty_unix_socket_setOption(env, fd, IPPROTO_IPV6, MCAST_LEAVE_SOURCE_GROUP, &mreq6, sizeof(mreq6));
         break;
     default:
         netty_unix_errors_throwIOException(env, "Address family not supported");
@@ -563,7 +596,7 @@ static jlong netty_epoll_linuxsocket_sendFile(JNIEnv* env, jclass clazz, jint fd
 static const JNINativeMethod fixed_method_table[] = {
   { "setTimeToLive", "(II)V", (void *) netty_epoll_linuxsocket_setTimeToLive },
   { "getTimeToLive", "(I)I", (void *) netty_epoll_linuxsocket_getTimeToLive },
-  { "setInterface", "(I[BI)V", (void *) netty_epoll_linuxsocket_setInterface },
+  { "setInterface", "(I[BII)V", (void *) netty_epoll_linuxsocket_setInterface },
   { "setTcpCork", "(II)V", (void *) netty_epoll_linuxsocket_setTcpCork },
   { "setSoBusyPoll", "(II)V", (void *) netty_epoll_linuxsocket_setSoBusyPoll },
   { "setTcpQuickAck", "(II)V", (void *) netty_epoll_linuxsocket_setTcpQuickAck },
@@ -593,10 +626,10 @@ static const JNINativeMethod fixed_method_table[] = {
   { "isIpRecvOrigDestAddr", "(I)I", (void *) netty_epoll_linuxsocket_isIpRecvOrigDestAddr },
   { "getTcpInfo", "(I[J)V", (void *) netty_epoll_linuxsocket_getTcpInfo },
   { "setTcpMd5Sig", "(I[BI[B)V", (void *) netty_epoll_linuxsocket_setTcpMd5Sig },
-  { "joinGroup", "(I[B[BI)V", (void *) netty_epoll_linuxsocket_joinGroup },
-  { "joinSsmGroup", "(I[B[BI[B)V", (void *) netty_epoll_linuxsocket_joinSsmGroup },
-  { "leaveGroup", "(I[B[BI)V", (void *) netty_epoll_linuxsocket_leaveGroup },
-  { "leaveSsmGroup", "(I[B[BI[B)V", (void *) netty_epoll_linuxsocket_leaveSsmGroup }
+  { "joinGroup", "(I[B[BII)V", (void *) netty_epoll_linuxsocket_joinGroup },
+  { "joinSsmGroup", "(I[B[BII[B)V", (void *) netty_epoll_linuxsocket_joinSsmGroup },
+  { "leaveGroup", "(I[B[BII)V", (void *) netty_epoll_linuxsocket_leaveGroup },
+  { "leaveSsmGroup", "(I[B[BII[B)V", (void *) netty_epoll_linuxsocket_leaveSsmGroup }
   // "sendFile" has a dynamic signature
 };
 

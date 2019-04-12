@@ -65,8 +65,12 @@ public class DatagramMulticastTest extends AbstractDatagramTest {
 
         sb.option(ChannelOption.IP_MULTICAST_IF, NetUtil.LOOPBACK_IF);
         sb.option(ChannelOption.SO_REUSEADDR, true);
+        sb.option(ChannelOption.IP_MULTICAST_LOOP_DISABLED, true);
+
         cb.option(ChannelOption.IP_MULTICAST_IF, NetUtil.LOOPBACK_IF);
         cb.option(ChannelOption.SO_REUSEADDR, true);
+        cb.option(ChannelOption.IP_MULTICAST_LOOP_DISABLED, true);
+
         Channel sc = sb.bind(newSocketAddress()).sync().channel();
 
         InetSocketAddress addr = (InetSocketAddress) sc.localAddress();

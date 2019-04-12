@@ -36,6 +36,7 @@ import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.UnknownHostException;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -69,7 +70,7 @@ public class DatagramMulticastTest extends AbstractDatagramTest {
         Channel sc = sb.bind(newSocketAddress()).sync().channel();
 
         InetSocketAddress addr = (InetSocketAddress) sc.localAddress();
-        cb.localAddress(addr.getPort());
+        cb.localAddress(newAnyLocalAddress(addr.getPort()));
 
         if (sc instanceof OioDatagramChannel) {
             // skip the test for OIO, as it fails because of
@@ -129,6 +130,17 @@ public class DatagramMulticastTest extends AbstractDatagramTest {
                 fail();
             }
             return success;
+        }
+    }
+
+    private InetSocketAddress newAnyLocalAddress(int port) throws UnknownHostException {
+        switch (internetProtocolFamily()) {
+            case IPv4:
+                return new InetSocketAddress(InetAddress.getByName("0.0.0.0"), port);
+            case IPv6:
+                return new InetSocketAddress(InetAddress.getByName("::"), port);
+            default:
+                throw new AssertionError();
         }
     }
 

@@ -74,17 +74,22 @@ static void netty_epoll_linuxsocket_setInterface(JNIEnv* env, jclass clazz, jint
 
     struct sockaddr_in* interfaceIpAddr;
 
-    if (netty_unix_socket_initSockaddr(env, interfaceAddress, scopeId, 0, &interfaceAddr, &interfaceAddrSize) == -1) {
-        netty_unix_errors_throwIOException(env, "Could not init sockaddr");
-        return;
-    }
-
     switch (interfaceAddr.ss_family) {
     case AF_INET:
+        if (netty_unix_socket_initSockaddr(env, interfaceAddress, scopeId, 0, &interfaceAddr, &interfaceAddrSize) == -1) {
+            netty_unix_errors_throwIOException(env, "Could not init sockaddr");
+            return;
+        }
+
         interfaceIpAddr = (struct sockaddr_in*) &interfaceAddr;
         netty_unix_socket_setOption(env, fd, IPPROTO_IP, IP_MULTICAST_IF, &interfaceIpAddr->sin_addr, sizeof(interfaceIpAddr->sin_addr));
         break;
     case AF_INET6:
+        if (interfaceIndex == -1) {
+            netty_unix_errors_throwIOException(env, "Unable to find network index");
+            return;
+        }
+
         netty_unix_socket_setOption(env, fd, IPPROTO_IPV6, IPV6_MULTICAST_IF, &interfaceIndex, sizeof(interfaceIndex));
         break;
     }
@@ -156,32 +161,35 @@ static void netty_epoll_linuxsocket_joinGroup(JNIEnv* env, jclass clazz, jint fd
     struct ip_mreq mreq;
 
     struct sockaddr_in6* groupIp6Addr;
-    struct sockaddr_in6* interfaceIp6Addr;
     struct ipv6_mreq mreq6;
 
     if (netty_unix_socket_initSockaddr(env, groupAddress, scopeId, 0, &groupAddr, &groupAddrSize) == -1) {
         netty_unix_errors_throwIOException(env, "Could not init sockaddr");
         return;
     }
-
-    if (netty_unix_socket_initSockaddr(env, interfaceAddress, scopeId, 0, &interfaceAddr, &interfaceAddrSize) == -1) {
-        netty_unix_errors_throwIOException(env, "Could not init sockaddr");
-        return;
-    }
-
     switch (groupAddr.ss_family) {
     case AF_INET:
-        groupIpAddr = (struct sockaddr_in*) &groupAddr;
+        if (netty_unix_socket_initSockaddr(env, interfaceAddress, scopeId, 0, &interfaceAddr, &interfaceAddrSize) == -1) {
+            netty_unix_errors_throwIOException(env, "Could not init sockaddr");
+            return;
+        }
+
         interfaceIpAddr = (struct sockaddr_in*) &interfaceAddr;
+        groupIpAddr = (struct sockaddr_in*) &groupAddr;
+
         memcpy(&mreq.imr_multiaddr, &groupIpAddr->sin_addr, sizeof(groupIpAddr->sin_addr));
         memcpy(&mreq.imr_interface, &interfaceIpAddr->sin_addr, sizeof(interfaceIpAddr->sin_addr));
         netty_unix_socket_setOption(env, fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq));
         break;
     case AF_INET6:
+        if (interfaceIndex == -1) {
+            netty_unix_errors_throwIOException(env, "Unable to find network index");
+            return;
+        }
+        mreq6.ipv6mr_interface = interfaceIndex;
+
         groupIp6Addr = (struct sockaddr_in6*) &groupAddr;
-        interfaceIp6Addr = (struct sockaddr_in6*) &interfaceAddr;
         memcpy(&mreq6.ipv6mr_multiaddr, &groupIp6Addr->sin6_addr, sizeof(groupIp6Addr->sin6_addr));
-        memcpy(&mreq6.ipv6mr_interface, &interfaceIp6Addr->sin6_addr, sizeof(interfaceIp6Addr->sin6_addr));
         netty_unix_socket_setOption(env, fd, IPPROTO_IPV6, IPV6_JOIN_GROUP, &mreq6, sizeof(mreq6));
         break;
     default:
@@ -209,11 +217,6 @@ static void netty_epoll_linuxsocket_joinSsmGroup(JNIEnv* env, jclass clazz, jint
         return;
     }
 
-    if (netty_unix_socket_initSockaddr(env, interfaceAddress, scopeId, 0, &interfaceAddr, &interfaceAddrSize) == -1) {
-        netty_unix_errors_throwIOException(env, "Could not init sockaddr");
-        return;
-    }
-
     if (netty_unix_socket_initSockaddr(env, sourceAddress, scopeId, 0, &sourceAddr, &sourceAddrSize) == -1) {
         netty_unix_errors_throwIOException(env, "Could not init sockaddr");
         return;
@@ -221,8 +224,12 @@ static void netty_epoll_linuxsocket_joinSsmGroup(JNIEnv* env, jclass clazz, jint
 
     switch (groupAddr.ss_family) {
     case AF_INET:
-        groupIpAddr = (struct sockaddr_in*) &groupAddr;
+        if (netty_unix_socket_initSockaddr(env, interfaceAddress, scopeId, 0, &interfaceAddr, &interfaceAddrSize) == -1) {
+            netty_unix_errors_throwIOException(env, "Could not init sockaddr");
+            return;
+        }
         interfaceIpAddr = (struct sockaddr_in*) &interfaceAddr;
+        groupIpAddr = (struct sockaddr_in*) &groupAddr;
         sourceIpAddr = (struct sockaddr_in*) &sourceAddr;
         memcpy(&mreq.imr_multiaddr, &groupIpAddr->sin_addr, sizeof(groupIpAddr->sin_addr));
         memcpy(&mreq.imr_interface, &interfaceIpAddr->sin_addr, sizeof(interfaceIpAddr->sin_addr));
@@ -232,7 +239,7 @@ static void netty_epoll_linuxsocket_joinSsmGroup(JNIEnv* env, jclass clazz, jint
     case AF_INET6:
         if (interfaceIndex == -1) {
             netty_unix_errors_throwIOException(env, "Unable to find network index");
-            break;
+            return;
         }
         mreq6.gsr_group = groupAddr;
         mreq6.gsr_interface = interfaceIndex;
@@ -256,7 +263,6 @@ static void netty_epoll_linuxsocket_leaveGroup(JNIEnv* env, jclass clazz, jint f
     struct ip_mreq mreq;
 
     struct sockaddr_in6* groupIp6Addr;
-    struct sockaddr_in6* interfaceIp6Addr;
     struct ipv6_mreq mreq6;
 
 
@@ -265,24 +271,28 @@ static void netty_epoll_linuxsocket_leaveGroup(JNIEnv* env, jclass clazz, jint f
         return;
     }
 
-    if (netty_unix_socket_initSockaddr(env, interfaceAddress, scopeId, 0, &interfaceAddr, &interfaceAddrSize) == -1) {
-        netty_unix_errors_throwIOException(env, "Could not init sockaddr");
-        return;
-    }
-
     switch (groupAddr.ss_family) {
     case AF_INET:
-        groupIpAddr = (struct sockaddr_in*) &groupAddr;
+        if (netty_unix_socket_initSockaddr(env, interfaceAddress, scopeId, 0, &interfaceAddr, &interfaceAddrSize) == -1) {
+            netty_unix_errors_throwIOException(env, "Could not init sockaddr");
+            return;
+        }
         interfaceIpAddr = (struct sockaddr_in*) &interfaceAddr;
+        groupIpAddr = (struct sockaddr_in*) &groupAddr;
+
         memcpy(&mreq.imr_multiaddr, &groupIpAddr->sin_addr, sizeof(groupIpAddr->sin_addr));
         memcpy(&mreq.imr_interface, &interfaceIpAddr->sin_addr, sizeof(interfaceIpAddr->sin_addr));
         netty_unix_socket_setOption(env, fd, IPPROTO_IP, IP_DROP_MEMBERSHIP, &mreq, sizeof(mreq));
         break;
     case AF_INET6:
+        if (interfaceIndex == -1) {
+            netty_unix_errors_throwIOException(env, "Unable to find network index");
+            return;
+        }
+        mreq6.ipv6mr_interface = interfaceIndex;
+
         groupIp6Addr = (struct sockaddr_in6*) &groupAddr;
-        interfaceIp6Addr = (struct sockaddr_in6*) &interfaceAddr;
         memcpy(&mreq6.ipv6mr_multiaddr, &groupIp6Addr->sin6_addr, sizeof(groupIp6Addr->sin6_addr));
-        memcpy(&mreq6.ipv6mr_interface, &interfaceIp6Addr->sin6_addr, sizeof(interfaceIp6Addr->sin6_addr));
         netty_unix_socket_setOption(env, fd, IPPROTO_IPV6, IPV6_LEAVE_GROUP, &mreq6, sizeof(mreq6));
         break;
     default:
@@ -311,11 +321,6 @@ static void netty_epoll_linuxsocket_leaveSsmGroup(JNIEnv* env, jclass clazz, jin
         return;
     }
 
-    if (netty_unix_socket_initSockaddr(env, interfaceAddress, scopeId, 0, &interfaceAddr, &interfaceAddrSize) == -1) {
-        netty_unix_errors_throwIOException(env, "Could not init sockaddr");
-        return;
-    }
-
     if (netty_unix_socket_initSockaddr(env, sourceAddress, scopeId, 0, &sourceAddr, &sourceAddrSize) == -1) {
         netty_unix_errors_throwIOException(env, "Could not init sockaddr");
         return;
@@ -323,8 +328,13 @@ static void netty_epoll_linuxsocket_leaveSsmGroup(JNIEnv* env, jclass clazz, jin
 
     switch (groupAddr.ss_family) {
     case AF_INET:
-        groupIpAddr = (struct sockaddr_in*) &groupAddr;
+        if (netty_unix_socket_initSockaddr(env, interfaceAddress, scopeId, 0, &interfaceAddr, &interfaceAddrSize) == -1) {
+            netty_unix_errors_throwIOException(env, "Could not init sockaddr");
+            return;
+        }
         interfaceIpAddr = (struct sockaddr_in*) &interfaceAddr;
+
+        groupIpAddr = (struct sockaddr_in*) &groupAddr;
         sourceIpAddr = (struct sockaddr_in*) &sourceAddr;
         memcpy(&mreq.imr_multiaddr, &groupIpAddr->sin_addr, sizeof(groupIpAddr->sin_addr));
         memcpy(&mreq.imr_interface, &interfaceIpAddr->sin_addr, sizeof(interfaceIpAddr->sin_addr));
@@ -334,7 +344,7 @@ static void netty_epoll_linuxsocket_leaveSsmGroup(JNIEnv* env, jclass clazz, jin
     case AF_INET6:
         if (interfaceIndex == -1) {
             netty_unix_errors_throwIOException(env, "Unable to find network index");
-            break;
+            return;
         }
 
         mreq6.gsr_group = groupAddr;

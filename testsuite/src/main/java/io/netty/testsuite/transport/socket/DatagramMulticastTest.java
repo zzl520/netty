@@ -36,7 +36,6 @@ import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.SocketAddress;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -67,7 +66,6 @@ public class DatagramMulticastTest extends AbstractDatagramTest {
         sb.option(ChannelOption.SO_REUSEADDR, true);
         cb.option(ChannelOption.IP_MULTICAST_IF, NetUtil.LOOPBACK_IF);
         cb.option(ChannelOption.SO_REUSEADDR, true);
-
         Channel sc = sb.bind(newSocketAddress()).sync().channel();
 
         InetSocketAddress addr = (InetSocketAddress) sc.localAddress();
@@ -81,7 +79,6 @@ public class DatagramMulticastTest extends AbstractDatagramTest {
             return;
         }
         DatagramChannel cc = (DatagramChannel) cb.bind().sync().channel();
-
         String group = internetProtocolFamily() == InternetProtocolFamily.IPv4 ?
                 "230.0.0.1" : "FF01:0:0:0:0:0:0:101";
         InetSocketAddress groupAddress = SocketUtils.socketAddress(group, addr.getPort());

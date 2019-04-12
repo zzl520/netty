@@ -41,8 +41,8 @@ import static io.netty.channel.unix.Errors.newConnectionResetException;
  * A socket which provides access Linux native methods.
  */
 final class LinuxSocket extends Socket {
-    private static final InetAddress INET_ANY = unsafeInetAddrByName("0.0.0.0");
-    private static final InetAddress INET6_ANY = unsafeInetAddrByName("::");
+    static final InetAddress INET_ANY = unsafeInetAddrByName("0.0.0.0");
+    static final InetAddress INET6_ANY = unsafeInetAddrByName("::");
     private static final long MAX_UINT32_T = 0xFFFFFFFFL;
     private static final NativeIoException SENDFILE_CONNECTION_RESET_EXCEPTION =
             newConnectionResetException("syscall:sendfile(...)", ERRNO_EPIPE_NEGATIVE);

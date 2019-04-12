@@ -265,7 +265,6 @@ static void netty_epoll_linuxsocket_leaveGroup(JNIEnv* env, jclass clazz, jint f
     struct sockaddr_in6* groupIp6Addr;
     struct ipv6_mreq mreq6;
 
-
     if (netty_unix_socket_initSockaddr(env, groupAddress, scopeId, 0, &groupAddr, &groupAddrSize) == -1) {
         netty_unix_errors_throwIOException(env, "Could not init sockaddr");
         return;

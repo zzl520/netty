@@ -36,6 +36,7 @@ import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.net.UnknownHostException;
 import java.util.Enumeration;
 import java.util.List;
@@ -146,6 +147,15 @@ public class DatagramMulticastTest extends AbstractDatagramTest {
             default:
                 throw new AssertionError();
         }
+    }
+
+    protected SocketAddress newSocketAddress() {
+        try {
+            return newAnyLocalAddress(0);
+        } catch (UnknownHostException e) {
+            throw new IllegalStateException(e);
+        }
+
     }
 
     @Before

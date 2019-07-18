@@ -45,8 +45,6 @@ import io.netty.util.internal.logging.InternalLoggerFactory;
 import java.io.IOException;
 import java.net.SocketAddress;
 import java.nio.channels.ClosedChannelException;
-import java.util.ArrayDeque;
-import java.util.Queue;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
@@ -105,26 +103,6 @@ abstract class AbstractHttp2StreamChannel extends DefaultAttributeMap implements
     private static final AtomicIntegerFieldUpdater<AbstractHttp2StreamChannel> UNWRITABLE_UPDATER =
             AtomicIntegerFieldUpdater.newUpdater(AbstractHttp2StreamChannel.class, "unwritable");
 
-    /**
-     * The current status of the read-processing for a {@link AbstractHttp2StreamChannel}.
-     */
-    private enum ReadStatus {
-        /**
-         * No read in progress and no read was requested (yet)
-         */
-        IDLE,
-
-        /**
-         * Reading in progress
-         */
-        IN_PROGRESS,
-
-        /**
-         * A read operation was requested.
-         */
-        REQUESTED
-    }
-
     private final AbstractHttp2StreamChannel.Http2StreamChannelConfig config = new Http2StreamChannelConfig(this);
     private final AbstractHttp2StreamChannel.Http2ChannelUnsafe unsafe = new Http2ChannelUnsafe();
     private final ChannelId channelId;
@@ -142,16 +120,6 @@ abstract class AbstractHttp2StreamChannel extends DefaultAttributeMap implements
 
     private boolean outboundClosed;
     private int flowControlledBytes;
-
-    /**
-     * This variable represents if a read is in progress for the current channel or was requested.
-     * Note that depending upon the {@link RecvByteBufAllocator} behavior a read may extend beyond the
-     * {@link Http2ChannelUnsafe#beginRead()} method scope. The {@link Http2ChannelUnsafe#beginRead()} loop may
-     * drain all pending data, and then if the parent channel is reading this channel may still accept frames.
-     */
-    private ReadStatus readStatus = ReadStatus.IDLE;
-
-    private Queue<Object> inboundBuffer;
 
     /** {@code true} after the first HEADERS frame has been written **/
     private boolean firstFrameWritten;
@@ -272,9 +240,10 @@ abstract class AbstractHttp2StreamChannel extends DefaultAttributeMap implements
 
     void streamClosed() {
         unsafe.readEOS();
+
         // Attempt to drain any queued data from the queue and deliver it to the application before closing this
         // channel.
-        unsafe.doBeginRead();
+        unsafe.closeForcibly();
     }
 
     @Override
@@ -525,10 +494,7 @@ abstract class AbstractHttp2StreamChannel extends DefaultAttributeMap implements
         assert eventLoop().inEventLoop();
         if (!isActive()) {
             ReferenceCountUtil.release(frame);
-        } else if (readStatus != ReadStatus.IDLE) {
-            // If a read is in progress or has been requested, there cannot be anything in the queue,
-            // otherwise we would have drained it from the queue and processed it during the read cycle.
-            assert inboundBuffer == null || inboundBuffer.isEmpty();
+        } else {
             final RecvByteBufAllocator.Handle allocHandle = unsafe.recvBufAllocHandle();
             flowControlledBytes += unsafe.doRead0(frame, allocHandle);
             // We currently don't need to check for readEOS because the parent channel and child channel are limited
@@ -543,17 +509,11 @@ abstract class AbstractHttp2StreamChannel extends DefaultAttributeMap implements
             } else {
                 unsafe.notifyReadComplete(allocHandle, true);
             }
-        } else {
-            if (inboundBuffer == null) {
-                inboundBuffer = new ArrayDeque<Object>(4);
-            }
-            inboundBuffer.add(frame);
         }
     }
 
     void fireChildReadComplete() {
         assert eventLoop().inEventLoop();
-        assert readStatus != ReadStatus.IDLE || !readCompletePending;
         unsafe.notifyReadComplete(unsafe.recvBufAllocHandle(), false);
     }
 
@@ -663,17 +623,6 @@ abstract class AbstractHttp2StreamChannel extends DefaultAttributeMap implements
                 flush();
             }
 
-            if (inboundBuffer != null) {
-                for (;;) {
-                    Object msg = inboundBuffer.poll();
-                    if (msg == null) {
-                        break;
-                    }
-                    ReferenceCountUtil.release(msg);
-                }
-                inboundBuffer = null;
-            }
-
             // The promise should be notified before we call fireChannelInactive().
             outboundClosed = true;
             closePromise.setSuccess();
@@ -757,54 +706,7 @@ abstract class AbstractHttp2StreamChannel extends DefaultAttributeMap implements
             if (!isActive()) {
                 return;
             }
-            switch (readStatus) {
-                case IDLE:
-                    readStatus = ReadStatus.IN_PROGRESS;
-                    doBeginRead();
-                    break;
-                case IN_PROGRESS:
-                    readStatus = ReadStatus.REQUESTED;
-                    break;
-                default:
-                    break;
-            }
-        }
-
-        private Object pollQueuedMessage() {
-            return inboundBuffer == null ? null : inboundBuffer.poll();
-        }
-
-        void doBeginRead() {
-            // Process messages until there are none left (or the user stopped requesting) and also handle EOS.
-            while (readStatus != ReadStatus.IDLE) {
-                Object message = pollQueuedMessage();
-                if (message == null) {
-                    if (readEOS) {
-                        unsafe.closeForcibly();
-                    }
-                    break;
-                }
-                final RecvByteBufAllocator.Handle allocHandle = recvBufAllocHandle();
-                allocHandle.reset(config());
-                boolean continueReading = false;
-                do {
-                    flowControlledBytes += doRead0((Http2Frame) message, allocHandle);
-                } while ((readEOS || (continueReading = allocHandle.continueReading()))
-                        && (message = pollQueuedMessage()) != null);
-
-                if (continueReading && isParentReadInProgress() && !readEOS) {
-                    // Currently the parent and child channel are on the same EventLoop thread. If the parent is
-                    // currently reading it is possible that more frames will be delivered to this child channel. In
-                    // the case that this child channel still wants to read we delay the channelReadComplete on this
-                    // child channel until the parent is done reading.
-                    if (!readCompletePending) {
-                        readCompletePending = true;
-                        addChannelToReadCompletePendingQueue();
-                    }
-                } else {
-                    notifyReadComplete(allocHandle, true);
-                }
-            }
+            updateLocalWindowIfNeeded();
         }
 
         void readEOS() {
@@ -826,14 +728,6 @@ abstract class AbstractHttp2StreamChannel extends DefaultAttributeMap implements
             }
             // Set to false just in case we added the channel multiple times before.
             readCompletePending = false;
-
-            if (readStatus == ReadStatus.REQUESTED) {
-                readStatus = ReadStatus.IN_PROGRESS;
-            } else {
-                readStatus = ReadStatus.IDLE;
-            }
-
-            updateLocalWindowIfNeeded();
 
             allocHandle.readComplete();
             pipeline().fireChannelReadComplete();
@@ -1021,7 +915,7 @@ abstract class AbstractHttp2StreamChannel extends DefaultAttributeMap implements
      * window, without having to create a new {@link WriteBufferWaterMark} object whenever the flow control window
      * changes.
      */
-    private final class Http2StreamChannelConfig extends DefaultChannelConfig {
+    private static final class Http2StreamChannelConfig extends DefaultChannelConfig {
         Http2StreamChannelConfig(Channel channel) {
             super(channel);
         }

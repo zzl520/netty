@@ -575,6 +575,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             // See https://github.com/netty/netty/issues/2363
             selectedKeys.keys[i] = null;
 
+            //实际是netty的niochannel
             final Object a = k.attachment();
 
             if (a instanceof AbstractNioChannel) {
@@ -736,6 +737,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 long timeoutMillis = (selectDeadLineNanos - currentTimeNanos + 500000L) / 1000000L;
                 if (timeoutMillis <= 0) {
                     if (selectCnt == 0) {
+                        //已到deadline，立刻select一次
                         selector.selectNow();
                         selectCnt = 1;
                     }
@@ -751,7 +753,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     selectCnt = 1;
                     break;
                 }
-
+                //阻塞select
                 int selectedKeys = selector.select(timeoutMillis);
                 selectCnt ++;
 
@@ -785,6 +787,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                         selectCnt >= SELECTOR_AUTO_REBUILD_THRESHOLD) {
                     // The selector returned prematurely many times in a row.
                     // Rebuild the selector to work around the problem.
+                    //解决jdk空轮训bug
                     logger.warn(
                             "Selector.select() returned prematurely {} times in a row; rebuilding Selector {}.",
                             selectCnt, selector);

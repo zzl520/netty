@@ -169,12 +169,13 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         p.addLast(new ChannelInitializer<Channel>() {
             @Override
             public void initChannel(final Channel ch) throws Exception {
+                //这个方法，实际在注册selector完成之后，才调用，在绑定端口前调用
                 final ChannelPipeline pipeline = ch.pipeline();
                 ChannelHandler handler = config.handler();
                 if (handler != null) {
                     pipeline.addLast(handler);
                 }
-
+                //添加Acceptor，用于处理客户端连接
                 ch.eventLoop().execute(new Runnable() {
                     @Override
                     public void run() {
